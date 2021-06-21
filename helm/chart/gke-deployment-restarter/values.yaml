@@ -1,0 +1,18 @@
+name: dev
+environment: dev
+resources: {}
+cronjob: gke-restarter
+roleName: gke-restarter
+namespace: default
+clusterRoleBindingName: gke-restarter-rolebinding
+serviceAccountName: gke-restarter-sa
+schedule: "0 0 * * *"
+image:
+  name: eahrend/gke-deployment-restarter:latest
+  pullPolicy: Always
+c_env:
+  NAMESPACE: default
+  LABEL_NAME: busybox
+  LABEL_VALUE: busybox
+
+
