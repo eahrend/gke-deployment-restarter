@@ -10,15 +10,18 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/util/retry"
+	"log"
 	"os"
 )
 
-var KubeClient *kubernetes.Clientset
-
 func main() {
-	err := getKubeConfig()
+	config, err := rest.InClusterConfig()
 	if err != nil {
-		panic(err)
+		log.Panicf("failed getting InClusterConfig: %s", err.Error())
+	}
+	KubeClient, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		log.Panicf("failed getting kubeconfig: %s", err.Error())
 	}
 	nameSpace := os.Getenv("NAMESPACE")
 	labelName := os.Getenv("LABEL_NAME")
@@ -26,8 +29,9 @@ func main() {
 	todoContext := context.TODO()
 	deployClient := KubeClient.AppsV1().Deployments(nameSpace)
 	retryErr := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		result, getErr := getDeployment(labelName, labelValue, nameSpace)
+		result, getErr := getDeployment(labelName, labelValue, nameSpace, KubeClient)
 		if getErr != nil {
+			log.Println("Failed to get deployment:", getErr)
 			return getErr
 		}
 		refreshUUID, err := uuid.NewRandom()
@@ -58,11 +62,12 @@ func main() {
 		return updateErr
 	})
 	if retryErr != nil {
-		panic(err)
+		log.Panicf("failed to updated: %s", err.Error())
 	}
+	log.Println("Successfully restarted pods")
 }
 
-func getDeployment(labelName, labelValue, namespace string) (appsv1.Deployment, error) {
+func getDeployment(labelName, labelValue, namespace string, KubeClient *kubernetes.Clientset) (appsv1.Deployment, error) {
 	listOpts := metav1.ListOptions{LabelSelector: labelName}
 	deployments, err := KubeClient.AppsV1().Deployments(namespace).List(context.TODO(), listOpts)
 	if err != nil {
@@ -76,10 +81,4 @@ func getDeployment(labelName, labelValue, namespace string) (appsv1.Deployment, 
 		}
 	}
 	return appsv1.Deployment{}, fmt.Errorf("no deployment with label %s and value %s exists", labelName, labelValue)
-}
-
-func getKubeConfig() error {
-	config, err := rest.InClusterConfig()
-	KubeClient, err = kubernetes.NewForConfig(config)
-	return err
 }
